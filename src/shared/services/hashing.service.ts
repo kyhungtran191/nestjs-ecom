@@ -1,0 +1,16 @@
+import { Injectable } from '@nestjs/common'
+import { compare, hash } from 'bcrypt'
+
+const saltRounds = 10
+
+@Injectable()
+export class HashingService {
+  // Hash password
+  hash(value: string) {
+    return hash(value, saltRounds)
+  }
+  //compare correct password
+  compare(value: string, hash: string) {
+    return compare(value, hash)
+  }
+}
