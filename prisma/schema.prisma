@@ -9,7 +9,7 @@ datasource db {
 
 model Language {
   id                   Int                   @id @default(autoincrement())
-  name                 String                @db.VarChar(500)
+  name                 String                @unique @db.VarChar(500)
   code                 String                @unique @db.VarChar(10)
   userTranslations     UserTranslation[]
   productTranslations  ProductTranslation[]
