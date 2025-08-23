@@ -15,10 +15,10 @@ const sharedServices = [PrismaService, HashingService, TokenService]
     ...sharedServices,
     AccessTokenGuard,
     APIKeyGuard,
-    {
-      provide: APP_GUARD,
-      useClass: AuthenticationGuard,
-    },
+    // {
+    //   provide: APP_GUARD,
+    //   useClass: AuthenticationGuard,
+    // },
   ],
   exports: sharedServices,
   imports: [JwtModule],
