@@ -5,8 +5,8 @@ import { TokenService } from './services/token.service'
 import { JwtModule } from '@nestjs/jwt'
 import { AccessTokenGuard } from './guards/access-token.guard'
 import { APIKeyGuard } from './guards/x-api-key.guard'
-// import { APP_GUARD } from '@nestjs/core'
-// import { AuthenticationGuard } from './guards/authentication.guard'
+import { APP_GUARD } from '@nestjs/core'
+import { AuthenticationGuard } from './guards/authentication.guard'
 import { ShareUserRepository } from './repositories/share-user.repo'
 import { EmailService } from './services/email.service'
 
@@ -17,11 +17,10 @@ const sharedServices = [PrismaService, HashingService, TokenService, ShareUserRe
     ...sharedServices,
     AccessTokenGuard,
     APIKeyGuard,
-
-    // {
-    //   provide: APP_GUARD,
-    //   useClass: AuthenticationGuard,
-    // },
+    {
+      provide: APP_GUARD,
+      useClass: AuthenticationGuard,
+    },
   ],
   exports: sharedServices,
   imports: [JwtModule],

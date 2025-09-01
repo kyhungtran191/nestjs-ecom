@@ -102,7 +102,9 @@ export class AuthService {
         },
       ])
     }
-    return verificationCode
+    return {
+      message: 'Sent OTP successfully!',
+    }
   }
 
   async login(body: LoginBodyType & { userAgent: string; ip: string }) {
@@ -215,13 +217,15 @@ export class AuthService {
 
   async logout(refreshToken: string) {
     try {
-      // check valid token
+      // 1. check valid token
       await this.tokenService.verifyRefreshToken(refreshToken)
-      // delete token in database
-      await this.prismaService.refreshToken.delete({
-        where: {
-          token: refreshToken,
-        },
+      // 2. delete token in database
+      const deletedRefreshToken = await this.authRepo.deleteRefreshToken({
+        token: refreshToken,
+      })
+      // 3. Update device
+      await this.authRepo.updateDevice(deletedRefreshToken.deviceId, {
+        isActive: false,
       })
       return { message: 'Logout successfully' }
     } catch (error) {
@@ -230,6 +234,7 @@ export class AuthService {
       if (isNotFoundPrismaError(error)) {
         throw new UnauthorizedException('Refresh token has been revoked')
       }
+
       throw new UnauthorizedException()
     }
   }
