@@ -11,4 +11,5 @@ export class ShareUserRepository {
       where: uniqueObject,
     })
   }
+  
 }

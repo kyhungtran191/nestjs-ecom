@@ -4,13 +4,14 @@ import { generateOTP, isNotFoundPrismaError, isUniqueConstraintPrismaError } fro
 import { HashingService } from 'src/shared/services/hashing.service'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { TokenService } from 'src/shared/services/token.service'
-import { RegisterBodyType, SendOTPBodyType } from './auth.model'
+import { LoginBodyType, RegisterBodyType, SendOTPBodyType } from './auth.model'
 import { AuthRepository } from './auth.repo'
 import { ShareUserRepository } from 'src/shared/repositories/share-user.repo'
 import { addMilliseconds } from 'date-fns'
 import ms from 'ms'
 import envConfig from 'src/shared/config'
 import { EmailService } from 'src/shared/services/email.service'
+import { AccessTokenPayloadCreate } from 'src/shared/types/jwt.type'
 
 @Injectable()
 export class AuthService {
@@ -104,15 +105,18 @@ export class AuthService {
     return verificationCode
   }
 
-  async login(body: any) {
-    const user = await this.prismaService.user.findUnique({
-      where: {
-        email: body.email,
-      },
+  async login(body: LoginBodyType & { userAgent: string; ip: string }) {
+    const user = await this.authRepo.findUniqueIncludeRoleName({
+      email: body.email,
     })
 
     if (!user) {
-      throw new UnauthorizedException('Account is not exist')
+      throw new UnprocessableEntityException([
+        {
+          message: 'Email is not exist',
+          path: 'email',
+        },
+      ])
     }
 
     const isPasswordMatch = await this.hashingService.compare(body.password, user.password)
@@ -124,53 +128,70 @@ export class AuthService {
         },
       ])
     }
-    const tokens = await this.generateTokens({ userId: user.id })
+
+    const device = await this.authRepo.createDevice({
+      userId: user.id,
+      ip: body.ip,
+      userAgent: body.userAgent,
+    })
+
+    const tokens = await this.generateTokens({
+      deviceId: device.id,
+      roleId: user.role.id,
+      roleName: user.role.name,
+      userId: user.id,
+    })
+
     return tokens
   }
 
-  async generateTokens(payload: { userId: number }) {
+  async generateTokens(payload: AccessTokenPayloadCreate) {
     const [accessToken, refreshToken] = await Promise.all([
-      this.tokenService.signAccessToken(payload),
+      this.tokenService.signAccessToken({
+        userId: payload.userId,
+        deviceId: payload.deviceId,
+        roleId: payload.roleId,
+        roleName: payload.roleName,
+      }),
       this.tokenService.signRefreshToken(payload),
     ])
     const decodedRefreshToken = await this.tokenService.verifyRefreshToken(refreshToken)
-    await this.prismaService.refreshToken.create({
-      data: {
-        token: refreshToken,
-        userId: payload.userId,
-        expiresAt: new Date(decodedRefreshToken.exp * 1000),
-      },
+    await this.authRepo.createRefreshToken({
+      deviceId: payload.deviceId,
+      expiresAt: new Date(decodedRefreshToken.exp * 1000),
+      token: refreshToken,
+      userId: payload.userId,
     })
     return { accessToken, refreshToken }
   }
 
-  async refreshToken(refreshToken: string) {
-    try {
-      // 1. check the userId is valid or not
-      const { userId } = await this.tokenService.verifyRefreshToken(refreshToken)
-      // 2. is refresh token existing on the db
-      await this.prismaService.refreshToken.findUniqueOrThrow({
-        where: {
-          token: refreshToken,
-        },
-      })
-      // 3. delete old token
-      await this.prismaService.refreshToken.delete({
-        where: {
-          token: refreshToken,
-        },
-      })
-      // 4. Tạo mới accessToken và refreshToken
-      return await this.generateTokens({ userId })
-    } catch (error) {
-      // refresh token is refreshed
-      // refresh is token
-      if (isNotFoundPrismaError(error)) {
-        throw new UnauthorizedException('Refresh token has been revoked')
-      }
-      throw new UnauthorizedException()
-    }
-  }
+  // async refreshToken(refreshToken: string) {
+  //   try {
+  //     // 1. check the userId is valid or not
+  //     const { userId } = await this.tokenService.verifyRefreshToken(refreshToken)
+  //     // 2. is refresh token existing on the db
+  //     await this.prismaService.refreshToken.findUniqueOrThrow({
+  //       where: {
+  //         token: refreshToken,
+  //       },
+  //     })
+  //     // 3. delete old token
+  //     await this.prismaService.refreshToken.delete({
+  //       where: {
+  //         token: refreshToken,
+  //       },
+  //     })
+  //     // 4. Tạo mới accessToken và refreshToken
+  //     return await this.generateTokens({ userId })
+  //   } catch (error) {
+  //     // refresh token is refreshed
+  //     // refresh is token
+  //     if (isNotFoundPrismaError(error)) {
+  //       throw new UnauthorizedException('Refresh token has been revoked')
+  //     }
+  //     throw new UnauthorizedException()
+  //   }
+  // }
 
   async logout(refreshToken: string) {
     try {

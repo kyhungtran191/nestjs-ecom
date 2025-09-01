@@ -19,3 +19,4 @@ export const UserSchema = z.object({
 })
 
 export type UserType = z.infer<typeof UserSchema>
+
