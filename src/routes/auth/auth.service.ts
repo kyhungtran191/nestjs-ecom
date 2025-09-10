@@ -17,10 +17,9 @@ import { AccessTokenPayloadCreate } from 'src/shared/types/jwt.type'
 export class AuthService {
   constructor(
     private readonly hashingService: HashingService,
-    private readonly tokenService: TokenService,
-    private readonly authRepo: AuthRepository,
     private readonly rolesService: RolesService,
-    private readonly prismaService: PrismaService,
+    private readonly authRepo: AuthRepository,
+    private readonly tokenService: TokenService,
     private readonly shareUserRepository: ShareUserRepository,
     private readonly emailService: EmailService,
   ) {}

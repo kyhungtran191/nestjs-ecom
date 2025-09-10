@@ -10,7 +10,7 @@ export class AuthenticationGuard implements CanActivate {
   private readonly authTypeGuardMap: Record<string, CanActivate> = {
     [AuthType.Bearer]: this.accessTokenGuard,
     [AuthType.APIKey]: this.apiKeyGuard,
-    [AuthType.None]: { canActivate: () => false },
+    [AuthType.None]: { canActivate: () => true },
   }
   constructor(
     private reflector: Reflector,
@@ -26,7 +26,7 @@ export class AuthenticationGuard implements CanActivate {
     ]) ?? {
       authTypes: [AuthType.Bearer],
       options: {
-        condition: 'or',
+        condition: ConditionGuard.AND,
       },
     }
 
