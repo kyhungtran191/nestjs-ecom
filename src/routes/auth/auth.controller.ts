@@ -17,6 +17,7 @@ import { GoogleService } from './google.service'
 import { Response } from 'express'
 import envConfig from 'src/shared/config'
 import { error } from 'console'
+import { ForgotPasswordBodyType } from './auth.model'
 
 @Controller('auth')
 export class AuthController {
@@ -85,5 +86,12 @@ export class AuthController {
 
       return res.redirect(`${envConfig.GOOGLE_REDIRECT_CLIENT_URI}?errorMessage=${message}`)
     }
+  }
+
+  @Post('forgot-password')
+  @IsPublic()
+  @ZodSerializerDto(MessageResDTO)
+  async forgotPassword(body: ForgotPasswordBodyType) {
+    return this.authService.forgotPassword(body)
   }
 }

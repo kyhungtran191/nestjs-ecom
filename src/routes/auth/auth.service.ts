@@ -4,7 +4,13 @@ import { generateOTP, isNotFoundPrismaError, isUniqueConstraintPrismaError } fro
 import { HashingService } from 'src/shared/services/hashing.service'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { TokenService } from 'src/shared/services/token.service'
-import { LoginBodyType, RefreshTokenBodyType, RegisterBodyType, SendOTPBodyType } from './auth.model'
+import {
+  ForgotPasswordBodyType,
+  LoginBodyType,
+  RefreshTokenBodyType,
+  RegisterBodyType,
+  SendOTPBodyType,
+} from './auth.model'
 import { AuthRepository } from './auth.repo'
 import { ShareUserRepository } from 'src/shared/repositories/share-user.repo'
 import { addMilliseconds } from 'date-fns'
@@ -12,6 +18,13 @@ import ms from 'ms'
 import envConfig from 'src/shared/config'
 import { EmailService } from 'src/shared/services/email.service'
 import { AccessTokenPayloadCreate } from 'src/shared/types/jwt.type'
+import {
+  EmailAlreadyExistsException,
+  EmailNotFoundException,
+  InvalidOTPException,
+  OTPExpiredException,
+} from './error.model'
+import { TypeOfVerificationCode } from 'src/shared/constants/auth.const'
 
 @Injectable()
 export class AuthService {
@@ -23,31 +36,31 @@ export class AuthService {
     private readonly shareUserRepository: ShareUserRepository,
     private readonly emailService: EmailService,
   ) {}
+
+  async validateVerificationCode({ email, code, type }: { email: string; code: string; type: TypeOfVerificationCode }) {
+    const verificationCode = await this.authRepo.findUniqueVerificationCode({
+      email,
+      code,
+      type,
+    })
+
+    if (!verificationCode) {
+      throw InvalidOTPException
+    }
+    if (verificationCode.expiresAt < new Date()) {
+      throw OTPExpiredException
+    }
+    return verificationCode
+  }
+
   async register(body: RegisterBodyType) {
     try {
-      const verificationCode = await this.authRepo.findUniqueVerificationCode({
-        email: body.email,
-        code: body.code,
-        type: 'REGISTER',
-      })
       // check if verification code is in db
-      if (!verificationCode) {
-        throw new UnprocessableEntityException([
-          {
-            message: 'OTP is invalid',
-            path: 'otp',
-          },
-        ])
-      }
-      // check if otp is expired
-      if (verificationCode.expiresAt < new Date()) {
-        throw new UnprocessableEntityException([
-          {
-            message: 'OTP expired',
-            path: 'otp',
-          },
-        ])
-      }
+      await this.validateVerificationCode({
+        code: body.code,
+        email: body.email,
+        type: TypeOfVerificationCode.REGISTER,
+      })
 
       const clientRoleId = await this.rolesService.getClientRoleId()
       const hashedPassword = await this.hashingService.hash(body.password)
@@ -58,6 +71,13 @@ export class AuthService {
         password: hashedPassword,
         roleId: clientRoleId,
       })
+
+      await this.authRepo.deleteVerificationCode({
+        code: body.code,
+        email: body.email,
+        type: TypeOfVerificationCode.REGISTER,
+      })
+
       return user
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
@@ -74,13 +94,11 @@ export class AuthService {
 
   async sendOTP(body: SendOTPBodyType) {
     const user = await this.shareUserRepository.findUnique({ email: body.email })
-    if (user) {
-      throw new UnprocessableEntityException([
-        {
-          message: 'Email existed',
-          path: 'email',
-        },
-      ])
+    if (body.type === TypeOfVerificationCode.REGISTER && user) {
+      throw EmailAlreadyExistsException
+    }
+    if (body.type === TypeOfVerificationCode.FORGOT_PASSWORD && !user) {
+      throw EmailNotFoundException
     }
     const code = generateOTP()
 
@@ -236,5 +254,32 @@ export class AuthService {
 
       throw new UnauthorizedException()
     }
+  }
+
+  async forgotPassword(body: ForgotPasswordBodyType) {
+    const { code, newPassword, email } = body
+    // 1. check if exist email
+    const user = await this.shareUserRepository.findUnique({
+      email,
+    })
+    if (!user) {
+      throw EmailNotFoundException
+    }
+    // 2. check OTP
+    await this.validateVerificationCode({
+      code: body.code,
+      email: body.email,
+      type: TypeOfVerificationCode.FORGOT_PASSWORD,
+    })
+    // 3. Update new Password
+    const hashPW = await this.hashingService.hash(body.newPassword)
+    await this.authRepo.updateUser({ id: user.id }, { password: hashPW })
+    // 4. Delete OTP code
+    await this.authRepo.deleteVerificationCode({
+      email: body.email,
+      code: body.code,
+      type: TypeOfVerificationCode.REGISTER,
+    })
+    return { message: 'Change password successfully' }
   }
 }
