@@ -95,6 +95,24 @@ export const GoogleAuthStateSchema = DeviceSchema.pick({
   ip: true,
 })
 
+export const ForgotPasswordBodySchema = z
+  .object({
+    email: z.string().email(),
+    code: z.string().length(6),
+    newPassword: z.string().min(6).max(100),
+    confirmNewPassword: z.string().min(6).max(100),
+  })
+  .strict()
+  .superRefine(({ confirmNewPassword, newPassword }, ctx) => {
+    if (confirmNewPassword != newPassword) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Password and confirm password not match',
+        path: ['confirmNewPassword'],
+      })
+    }
+  })
+
 export const LogoutBodySchema = RefreshTokenBodySchema
 
 export type RegisterBodyType = z.infer<typeof RegisterBodySchema>
@@ -110,3 +128,4 @@ export type LoginBodyType = z.infer<typeof LoginBodySchema>
 export type RefreshTokenType = z.infer<typeof RefreshTokenSchema>
 export type LogoutBodyType = RefreshTokenBodyType
 export type GoogleAuthStateType = z.infer<typeof GoogleAuthStateSchema>
+export type ForgotPasswordBodyType = z.infer<typeof ForgotPasswordBodySchema>
